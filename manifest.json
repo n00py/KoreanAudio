@@ -1,0 +1,12 @@
+{
+  "package": "1247171000",
+  "name": "Korean Native Audio",
+  "mod": 2,
+  "author": "you",
+  "description": "Fetches Korean audio from Naver and inserts it into Anki notes.",
+  "supported": [
+    23,
+    24,
+    25
+  ]
+}

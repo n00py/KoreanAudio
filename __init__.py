@@ -2,7 +2,7 @@ from aqt import mw
 from aqt.qt import *
 from aqt.utils import showInfo
 from aqt import gui_hooks
-from .fetch_audio import fetch_and_save_audio, AUDIO_DIR
+from .fetch_audio import fetch_and_save_audio
 import os
 
 def fetch_audio_for_current_note():

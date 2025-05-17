@@ -3,9 +3,6 @@ import os
 import time
 from requests.exceptions import RequestException
 
-AUDIO_DIR = os.path.join(os.path.expanduser("~"), "Library/Application Support/Anki2/User 1/collection.media")
-os.makedirs(AUDIO_DIR, exist_ok=True)
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Gecko/20100101 Firefox/106.0",
     "Referer": "https://ko.dict.naver.com/",
@@ -44,6 +41,10 @@ def get_audio_url(entry_id):
     return None
 
 def fetch_and_save_audio(word):
+    from aqt import mw
+    AUDIO_DIR = mw.col.media.dir()
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+
     entry_id = get_entry_id(word)
     if not entry_id:
         return None

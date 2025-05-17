@@ -1,9 +1,9 @@
 {
   "package": "1247171000",
   "name": "Korean Native Audio",
-  "mod": 2,
+  "mod": 6,
   "author": "you",
-  "description": "Fetches Korean audio from Naver and inserts it into Anki notes.",
+  "description": "Fetches Korean audio from Naver and inserts it into Anki notes (cross-platform).",
   "supported": [
     23,
     24,

@@ -73,11 +73,3 @@ left unchanged in that case.
 
 Your card template must include the configured destination field, such as
 `{{Sound}}`, for the audio to play.
-
-## Development
-
-The provider and field-mapping code are testable without Anki:
-
-```sh
-python -m unittest discover -s tests -v
-```

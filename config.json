@@ -1,0 +1,13 @@
+{
+  "field_mappings": [
+    {
+      "source_fields": [
+        "Korean"
+      ],
+      "destination_field": "Sound"
+    }
+  ],
+  "overwrite_existing": false,
+  "krdict_api_key": "",
+  "forvo_api_key": ""
+}

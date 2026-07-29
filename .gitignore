@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.ankiaddon
+dist/
+user_files/*.log
+dogfood-backups/
+.DS_Store

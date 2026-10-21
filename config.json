@@ -9,5 +9,6 @@
   ],
   "overwrite_existing": false,
   "krdict_api_key": "",
-  "forvo_api_key": ""
+  "forvo_api_key": "",
+  "elevenlabs_api_key": ""
 }

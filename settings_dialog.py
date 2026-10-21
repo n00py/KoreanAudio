@@ -114,11 +114,12 @@ class SettingsDialog(QDialog):
         existing_layout.addStretch()
         layout.addLayout(existing_layout)
 
-        api_group = QGroupBox("Optional dictionary API keys")
+        api_group = QGroupBox("API keys")
         api_layout = QFormLayout(api_group)
         api_help = QLabel(
             "Source order: Naver → KRDICT (when configured) → Forvo API "
-            "(when configured) → public Forvo fallback."
+            "(when configured) → public Forvo fallback. ElevenLabs is a "
+            "separate button that generates Anna Kim TTS at 0.78× speed."
         )
         api_help.setWordWrap(True)
         api_layout.addRow(api_help)
@@ -127,8 +128,13 @@ class SettingsDialog(QDialog):
         self.krdict_key.setPlaceholderText("Optional 32-character KRDICT key")
         self.forvo_key = QLineEdit()
         self.forvo_key.setPlaceholderText("Optional Forvo API key")
+        self.elevenlabs_key = QLineEdit()
+        self.elevenlabs_key.setPlaceholderText(
+            "Required only for Generate with ElevenLabs"
+        )
         api_layout.addRow("KRDICT API key:", self.krdict_key)
         api_layout.addRow("Forvo API key:", self.forvo_key)
+        api_layout.addRow("ElevenLabs API key:", self.elevenlabs_key)
 
         self.show_keys_checkbox = QCheckBox("Show API keys")
         qconnect(self.show_keys_checkbox.toggled, self._set_keys_visible)
@@ -173,6 +179,7 @@ class SettingsDialog(QDialog):
         )
         self.krdict_key.setText(settings.krdict_api_key)
         self.forvo_key.setText(settings.forvo_api_key)
+        self.elevenlabs_key.setText(settings.elevenlabs_api_key)
         self.show_keys_checkbox.setChecked(False)
         self._set_keys_visible(False)
 
@@ -222,6 +229,7 @@ class SettingsDialog(QDialog):
         mode = _enum(QLineEdit, "EchoMode", mode_name)
         self.krdict_key.setEchoMode(mode)
         self.forvo_key.setEchoMode(mode)
+        self.elevenlabs_key.setEchoMode(mode)
 
     def _restore_defaults(self) -> None:
         self._load(settings_from_config(None))
@@ -276,6 +284,7 @@ class SettingsDialog(QDialog):
                 ),
                 "krdict_api_key": self.krdict_key.text().strip(),
                 "forvo_api_key": self.forvo_key.text().strip(),
+                "elevenlabs_api_key": self.elevenlabs_key.text().strip(),
             }
         )
         settings_from_config(config)

@@ -8,6 +8,9 @@ locking Anki's interface during network requests.
 - Fetch the current editor/reviewer note from the Tools menu.
 - Fetch directly from the note editor with the **🔊 Korean** button or
   **Ctrl+Shift+K**.
+- Generate Korean TTS directly from the note editor with the **✨ ElevenLabs** button
+  or **Ctrl+Shift+E**. This uses ElevenLabs Anna Kim with the tested clear-slow
+  0.78× shadowing preset.
 - Fetch multiple selected Browser notes from the right-click menu.
 - Configure ordered source-field fallbacks and destination fields per note shape.
 - Optionally use official Korean Basic Dictionary (KRDICT) and Forvo API audio
@@ -16,6 +19,8 @@ locking Anki's interface during network requests.
   public Forvo extraction.
 - Require an exact dictionary headword match instead of attaching one word from
   a sentence or a verb's basic form.
+- Reject implausibly long Naver pronunciation files, which prevents a mislabeled
+  upstream recording from being attached when its duration cannot fit the word.
 - Only change a destination field after audio has been downloaded successfully.
 - Run network work in the background and report specific batch skip reasons.
 
@@ -47,29 +52,37 @@ content, so existing audio or notes are preserved. The same sound tag will not
 be added twice. Choose **Replace existing content** only when replacement is
 intentional.
 
-The same window accepts an optional 32-character KRDICT Open API key and an
-optional Forvo API key. Keys are stored only in the local Anki add-on settings
-and are hidden in the window unless **Show API keys** is checked. The packaged
-defaults never contain a key. A regular or Premium Forvo website login is
-separate from Forvo API access; the add-on does not store a Forvo username or
-password.
+The same window accepts an optional 32-character KRDICT Open API key, an
+optional Forvo API key, and an ElevenLabs API key. The ElevenLabs key is needed
+only for the dedicated Anna button. Keys are stored only in the local Anki
+add-on settings and are hidden in the window unless **Show API keys** is
+checked. The packaged defaults never contain a key. A regular or Premium Forvo
+website login is separate from Forvo API access; the add-on does not store a
+Forvo username or password.
 
 ## Usage
 
 - Note editor: click **🔊 Korean** or press **Ctrl+Shift+K**
+- ElevenLabs: click **✨ ElevenLabs** or press **Ctrl+Shift+E**
 - Current reviewer/editor note: **Tools → Fetch Korean Audio for Current Note**
+- Current reviewer/editor note with Anna: **Tools → Generate ElevenLabs Korean
+  Audio for Current Note**
 - Configuration: **Tools → Korean Native Audio Settings…**
-- Selected notes: open **Browse**, select notes, then right-click and choose
-  **Fetch Korean Audio for Selected Notes**
+- Selected notes: open **Browse**, select notes, then right-click and choose the
+  dictionary-fetch or ElevenLabs-generation action.
 
 If all enabled automatic sources miss on a single note, the add-on offers to
-open the Korean Forvo page for manual download. Forvo's page markup can change,
-so its automatic extractor is intentionally treated as a fallback.
+either generate Anna audio with ElevenLabs or open the Korean Forvo page for
+manual download. Forvo's page markup can change, so its automatic extractor is
+intentionally treated as a fallback.
 
-This is a dictionary-audio add-on, not text-to-speech. Surrounding punctuation
+The regular **🔊 Korean** action is dictionary audio: surrounding punctuation
 such as `?` is ignored for lookup, but full sentences and conjugated forms are
-skipped when the source only provides a different headword. The destination is
-left unchanged in that case.
+skipped when the source only provides a different headword. The dedicated
+**✨ ElevenLabs** action is text-to-speech and accepts both words and complete
+sentences. It uses `eleven_multilingual_v2`, Anna Kim voice ID
+`uyVNoMrnUku1dZyVEXwD`, speed `0.78`, stability `0.90`, similarity `0.90`, and
+light pauses at long clause boundaries.
 
 Your card template must include the configured destination field, such as
 `{{Sound}}`, for the audio to play.

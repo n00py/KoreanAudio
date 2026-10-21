@@ -5,6 +5,7 @@ on Anki's background thread and the provider logic can be tested on its own.
 """
 
 import base64
+import hashlib
 import json
 import re
 import unicodedata
@@ -22,14 +23,24 @@ NAVER_SEARCH_URL = "https://ko.dict.naver.com/api3/koko/search"
 NAVER_ENTRY_URL = "https://ko.dict.naver.com/api/platform/koko/entry"
 FORVO_API_BASE_URL = "https://apifree.forvo.com"
 FORVO_WORD_URL = "https://forvo.com/word/"
+ELEVENLABS_TTS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+ELEVENLABS_ANNA_VOICE_ID = "uyVNoMrnUku1dZyVEXwD"
+ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
+ELEVENLABS_VOICE_SETTINGS = {
+    "stability": 0.90,
+    "similarity_boost": 0.90,
+    "style": 0.0,
+    "use_speaker_boost": True,
+    "speed": 0.78,
+}
 
 KRDICT_HEADERS = {
-    "User-Agent": "KoreanNativeAudio/0.5.0",
+    "User-Agent": "KoreanNativeAudio/0.6.0",
     "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.8",
     "Referer": "https://krdict.korean.go.kr/",
 }
 NAVER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 KoreanNativeAudio/0.5.0",
+    "User-Agent": "Mozilla/5.0 KoreanNativeAudio/0.6.0",
     "Referer": "https://ko.dict.naver.com/",
     "Accept": "application/json",
     "X-Requested-With": "XMLHttpRequest",
@@ -45,10 +56,25 @@ FORVO_HEADERS = {
     "Referer": "https://forvo.com/",
 }
 FORVO_API_HEADERS = {
-    "User-Agent": "KoreanNativeAudio/0.5.0",
+    "User-Agent": "KoreanNativeAudio/0.6.0",
     "Accept": "application/json",
     "Referer": "https://api.forvo.com/",
 }
+
+ELEVENLABS_NUMBER_READINGS = (
+    (r"50분", "오십 분"),
+    (r"10분", "십 분"),
+    (r"5분", "오 분"),
+    (r"4만", "사만"),
+    (r"30대", "삼십 대"),
+    (r"2미터", "이 미터"),
+    (r"8돈", "팔 돈"),
+    (r"1년에", "일 년에"),
+    (r"1학년", "일 학년"),
+    (r"2년", "이 년"),
+    (r"6개월", "육 개월"),
+    (r"3분", "삼 분"),
+)
 
 
 class HttpResponse(NamedTuple):
@@ -89,6 +115,113 @@ def fetch_audio(
     return fetch_from_forvo(word)
 
 
+def fetch_from_elevenlabs(text: str, api_key: str) -> Optional[AudioFile]:
+    """Generate Anna Kim Korean speech with the shadowing-friendly preset."""
+    spoken = elevenlabs_spoken_text(text)
+    if not spoken or not api_key.strip():
+        return None
+
+    request_text = _add_light_chunking(spoken)
+    url = "{}/{}?{}".format(
+        ELEVENLABS_TTS_BASE_URL,
+        ELEVENLABS_ANNA_VOICE_ID,
+        urlencode({"output_format": "mp3_44100_128"}),
+    )
+    payload = {
+        "text": request_text,
+        "model_id": ELEVENLABS_MODEL_ID,
+        "voice_settings": ELEVENLABS_VOICE_SETTINGS,
+    }
+    headers = {
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json",
+        "User-Agent": "KoreanNativeAudio/0.6.0",
+        "xi-api-key": api_key.strip(),
+    }
+    try:
+        response = _http_post_json(
+            url,
+            payload=payload,
+            headers=headers,
+            timeout=180,
+        )
+    except (HTTPError, URLError, OSError, ValueError, TypeError):
+        return None
+
+    if (
+        len(response.data) < 1000
+        or response.content_type.startswith("text/")
+        or response.content_type in ("application/json", "application/xml")
+    ):
+        return None
+    return AudioFile(
+        filename=elevenlabs_audio_filename(text),
+        data=response.data,
+    )
+
+
+def elevenlabs_spoken_text(text: str) -> str:
+    """Turn an Anki field into clean Korean text suitable for synthesis."""
+    value = str(text)
+    value = re.sub(r"<br\s*/?>", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"<[^>]+>", "", value)
+    value = unicodedata.normalize("NFC", unescape(value)).replace("\xa0", " ")
+    # A field such as 그림(을) 그리다 should be spoken as 그림을 그리다.
+    value = re.sub(r"\(([^()]*)\)", r"\1", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    for pattern, replacement in ELEVENLABS_NUMBER_READINGS:
+        value = re.sub(pattern, replacement, value)
+    return value
+
+
+def elevenlabs_audio_filename(text: str) -> str:
+    """Return the deterministic filename used to avoid repeat paid requests."""
+    spoken = elevenlabs_spoken_text(text)
+    fingerprint = hashlib.sha1(
+        (
+            spoken
+            + "|"
+            + ELEVENLABS_ANNA_VOICE_ID
+            + "|"
+            + ELEVENLABS_MODEL_ID
+            + "|"
+            + json.dumps(ELEVENLABS_VOICE_SETTINGS, sort_keys=True)
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    safe_name = _safe_audio_filename(spoken, ".mp3")[:-4]
+    safe_name = safe_name[:72].rstrip(" ._") or "korean"
+    return "elevenlabs_anna_{}_{}.mp3".format(safe_name, fingerprint)
+
+
+def _add_light_chunking(spoken: str) -> str:
+    request_text = re.sub(r",\s*", ', <break time="0.28s" /> ', spoken)
+    if "<break " in request_text or len(spoken.replace(" ", "")) < 34:
+        return request_text
+    boundaries = (
+        "말하면서도 ",
+        "원하는데도 ",
+        "있으니까 ",
+        "없으니까 ",
+        "있지만 ",
+        "살아남았지만 ",
+        "잘하면 ",
+        "똑똑하면 ",
+        "때문에 ",
+        "없어서 ",
+        "편인데 ",
+        "마친 다음에 ",
+        "들어가면 ",
+    )
+    for boundary in boundaries:
+        if boundary in request_text:
+            return request_text.replace(
+                boundary,
+                boundary + '<break time="0.26s" /> ',
+                1,
+            )
+    return request_text
+
+
 def fetch_from_krdict(word: str, api_key: str) -> Optional[AudioFile]:
     """Fetch official Korean Basic Dictionary audio for an exact headword."""
     word = _lookup_text(word)
@@ -106,9 +239,14 @@ def fetch_from_krdict(word: str, api_key: str) -> Optional[AudioFile]:
 
 def fetch_from_naver(word: str) -> Optional[AudioFile]:
     for entry_id in get_entry_ids(word):
-        audio_url = get_audio_url(entry_id)
+        audio_url = get_audio_url(entry_id, expected_word=word)
         if audio_url:
-            audio = _download_audio(audio_url, word, NAVER_HEADERS)
+            audio = _download_audio(
+                audio_url,
+                word,
+                NAVER_HEADERS,
+                max_duration_seconds=_max_pronunciation_duration(word),
+            )
             if audio:
                 return audio
     return None
@@ -327,7 +465,11 @@ def get_entry_ids(word: str) -> tuple:
     return ()
 
 
-def get_audio_url(entry_id: str) -> Optional[str]:
+def get_audio_url(
+    entry_id: str,
+    expected_word: Optional[str] = None,
+) -> Optional[str]:
+    expected_word = _lookup_text(expected_word or "")
     try:
         response = _http_get(
             NAVER_ENTRY_URL,
@@ -338,6 +480,9 @@ def get_audio_url(entry_id: str) -> Optional[str]:
         entry = json.loads(response.data.decode("utf-8")).get("entry", {})
         members = entry.get("members") or []
         for member in members:
+            member_word = member.get("entry_name") or member.get("show_full_name")
+            if expected_word and _lookup_text(member_word or "") != expected_word:
+                continue
             for pronunciation in member.get("prons") or []:
                 for field_name in ("female_pron_file", "male_pron_file"):
                     audio_url = pronunciation.get(field_name)
@@ -422,6 +567,7 @@ def _download_audio(
     url: str,
     word: str,
     headers: dict,
+    max_duration_seconds: Optional[float] = None,
 ) -> Optional[AudioFile]:
     try:
         response = _http_get(url, headers=headers, timeout=20)
@@ -436,8 +582,95 @@ def _download_audio(
         return None
 
     extension = _audio_extension(response.url, response.content_type)
+    if max_duration_seconds is not None and extension == ".mp3":
+        duration = _mp3_duration_seconds(response.data)
+        if duration is not None and duration > max_duration_seconds:
+            return None
     filename = _safe_audio_filename(word, extension)
     return AudioFile(filename=filename, data=response.data)
+
+
+def _max_pronunciation_duration(word: str) -> float:
+    """Allow natural pacing while rejecting obviously unrelated recordings."""
+    syllables = sum("\uac00" <= character <= "\ud7a3" for character in word)
+    units = syllables or sum(character.isalnum() for character in word)
+    return max(2.5, 1.2 + (0.65 * max(units, 1)))
+
+
+def _mp3_duration_seconds(data: bytes) -> Optional[float]:
+    """Return an MP3 duration by walking frames, without external packages."""
+    if len(data) < 4:
+        return None
+
+    position = 0
+    if data.startswith(b"ID3") and len(data) >= 10:
+        tag_size = (
+            ((data[6] & 0x7F) << 21)
+            | ((data[7] & 0x7F) << 14)
+            | ((data[8] & 0x7F) << 7)
+            | (data[9] & 0x7F)
+        )
+        position = 10 + tag_size
+        if data[5] & 0x10:
+            position += 10
+
+    bitrate_tables = {
+        (3, 1): (0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448),
+        (3, 2): (0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384),
+        (3, 3): (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320),
+        (2, 1): (0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256),
+        (2, 2): (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160),
+        (2, 3): (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160),
+    }
+    sample_rates = {
+        3: (44100, 48000, 32000),
+        2: (22050, 24000, 16000),
+        0: (11025, 12000, 8000),
+    }
+
+    duration = 0.0
+    frames = 0
+    while position + 4 <= len(data):
+        header = int.from_bytes(data[position : position + 4], "big")
+        if (header & 0xFFE00000) != 0xFFE00000:
+            position += 1
+            continue
+
+        version_id = (header >> 19) & 0x3
+        layer_bits = (header >> 17) & 0x3
+        bitrate_index = (header >> 12) & 0xF
+        sample_rate_index = (header >> 10) & 0x3
+        padding = (header >> 9) & 0x1
+        if (
+            version_id == 1
+            or layer_bits == 0
+            or bitrate_index in (0, 15)
+            or sample_rate_index == 3
+        ):
+            position += 1
+            continue
+
+        layer = 4 - layer_bits
+        table_version = 3 if version_id == 3 else 2
+        bitrate = bitrate_tables[(table_version, layer)][bitrate_index] * 1000
+        sample_rate = sample_rates[version_id][sample_rate_index]
+        if layer == 1:
+            frame_length = ((12 * bitrate) // sample_rate + padding) * 4
+            samples_per_frame = 384
+        elif layer == 3 and version_id != 3:
+            frame_length = (72 * bitrate) // sample_rate + padding
+            samples_per_frame = 576
+        else:
+            frame_length = (144 * bitrate) // sample_rate + padding
+            samples_per_frame = 1152
+
+        if frame_length <= 4 or position + frame_length > len(data):
+            break
+        duration += samples_per_frame / sample_rate
+        frames += 1
+        position += frame_length
+
+    return duration if frames >= 2 else None
 
 
 def _http_get(
@@ -451,6 +684,27 @@ def _http_get(
         url = url + separator + urlencode(params)
 
     request = Request(url, headers=headers or {}, method="GET")
+    with urlopen(request, timeout=timeout) as response:
+        content_type = response.headers.get_content_type()
+        return HttpResponse(
+            data=response.read(),
+            url=response.geturl(),
+            content_type=content_type,
+        )
+
+
+def _http_post_json(
+    url: str,
+    payload: dict,
+    headers: Optional[dict] = None,
+    timeout: int = 180,
+) -> HttpResponse:
+    request = Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers or {},
+        method="POST",
+    )
     with urlopen(request, timeout=timeout) as response:
         content_type = response.headers.get_content_type()
         return HttpResponse(

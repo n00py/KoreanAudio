@@ -14,6 +14,7 @@ class Settings(NamedTuple):
     overwrite_existing: bool
     krdict_api_key: str
     forvo_api_key: str
+    elevenlabs_api_key: str
 
 
 class NoteTarget(NamedTuple):
@@ -63,11 +64,16 @@ def settings_from_config(config: Optional[Mapping[str, Any]]) -> Settings:
     if not isinstance(forvo_api_key, str):
         raise ValueError("'forvo_api_key' must be text.")
 
+    elevenlabs_api_key = config.get("elevenlabs_api_key", "")
+    if not isinstance(elevenlabs_api_key, str):
+        raise ValueError("'elevenlabs_api_key' must be text.")
+
     return Settings(
         field_mappings=mappings,
         overwrite_existing=overwrite,
         krdict_api_key=api_key,
         forvo_api_key=forvo_api_key.strip(),
+        elevenlabs_api_key=elevenlabs_api_key.strip(),
     )
 
 
